@@ -12,6 +12,24 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import io.vertx.core.*;
+import io.vertx.core.cli.annotations.*;
+import io.vertx.core.impl.launcher.VertxLifecycleHooks;
+import io.vertx.core.metrics.MetricsOptions;
+import io.vertx.core.spi.VertxMetricsFactory;
+import io.vertx.core.spi.launcher.ExecutionContext;
+
+import java.lang.reflect.Method;
+import java.net.Inet6Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
+import java.util.Enumeration;
+import java.util.Properties;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
 /**
  * A singleton factory to start a clustered Vert.x platform.
  *
@@ -22,6 +40,7 @@ import java.util.logging.Logger;
  */
 public class VertxPlatformFactory {
 
+  protected String clusterHost;
   private static final Logger log = Logger.getLogger(VertxPlatformFactory.class
       .getName());
 
@@ -63,10 +82,16 @@ public class VertxPlatformFactory {
       return;
     }
 
+    clusterHost = getDefaultAddress();
+    System.out.println("cluster-host********* " + clusterHost);
     VertxOptions options = new VertxOptions();
-    options.setClustered(config.isClustered());
-    options.setClusterHost(config.getClusterHost());
-    options.setClusterPort(config.getClusterPort());
+    options.setClustered(true);
+    options.setClusterHost(clusterHost);
+//    options.setClusterPublicHost("10.10.1.81");
+    options.setClusterPort(15701);
+
+//    System.setProperty("vertx.cluster.public.host", "10.10.1.81");
+//    System.setProperty("vertx.hazelcast.config", "/opt/jboss/wildfly/aws-default-cluster.xml");
 
     CountDownLatch latch = new CountDownLatch(1);
     Vertx.clusteredVertx(options, ar -> {
@@ -92,6 +117,30 @@ public class VertxPlatformFactory {
       }
     } catch (Exception ignore) {
     }
+  }
+
+  protected String getDefaultAddress() {
+    Enumeration<NetworkInterface> nets;
+    try {
+      nets = NetworkInterface.getNetworkInterfaces();
+    } catch (SocketException e) {
+      return null;
+    }
+    NetworkInterface netinf;
+    while (nets.hasMoreElements()) {
+      netinf = nets.nextElement();
+
+      Enumeration<InetAddress> addresses = netinf.getInetAddresses();
+
+      while (addresses.hasMoreElements()) {
+        InetAddress address = addresses.nextElement();
+        if (!address.isAnyLocalAddress() && !address.isMulticastAddress()
+          && !(address instanceof Inet6Address)) {
+          return address.getHostAddress();
+        }
+      }
+    }
+    return null;
   }
 
   /**
